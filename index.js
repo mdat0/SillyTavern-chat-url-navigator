@@ -74,6 +74,31 @@ function updateDocumentTitle(chatInfo) {
     }
 }
 
+// Scroll to a specific message by its ID
+function scrollToMessage(messageId) {
+    if (messageId === null || messageId === undefined) return false;
+
+    const messageElement = document.querySelector(`#chat .mes[mesid="${messageId}"]`);
+    if (!messageElement) {
+        console.log(`[Chat URL Navigator] Message ${messageId} not found`);
+        toastr.warning(`Message #${messageId} not found`, 'Chat URL Navigator');
+        return false;
+    }
+
+    // Scroll to the message
+    messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    // Add highlight effect
+    messageElement.classList.add('flash');
+    setTimeout(() => {
+        messageElement.classList.remove('flash');
+    }, 2000);
+
+    console.log(`[Chat URL Navigator] Scrolled to message ${messageId}`);
+    toastr.info(`Navigated to message #${messageId}`, 'Chat URL Navigator');
+    return true;
+}
+
 // Get current chat information
 function getCurrentChatInfo() {
     const context = SillyTavern.getContext();
@@ -252,6 +277,10 @@ function parseUrlQueryParams(useOriginal = false) {
 
     if (!navType) return null;
 
+    // Parse message ID if present
+    const msgParam = params.get('msg');
+    const messageId = msgParam ? parseInt(msgParam, 10) : null;
+
     if (navType === 'char') {
         const avatar = params.get('avatar');
         const chatId = params.get('cid');
@@ -259,7 +288,8 @@ function parseUrlQueryParams(useOriginal = false) {
             return {
                 type: 'character',
                 avatar: avatar,
-                chatId: chatId
+                chatId: chatId,
+                messageId: messageId
             };
         }
     } else if (navType === 'group') {
@@ -269,7 +299,8 @@ function parseUrlQueryParams(useOriginal = false) {
             return {
                 type: 'group',
                 groupId: groupId,
-                chatId: chatId
+                chatId: chatId,
+                messageId: messageId
             };
         }
     }
@@ -322,6 +353,14 @@ async function navigateToChat(urlInfo) {
                 toastr.error(`Failed to open group chat`, 'Chat URL Navigator');
                 return false;
             }
+        }
+
+        // Scroll to specific message if specified
+        if (urlInfo.messageId !== null && urlInfo.messageId !== undefined) {
+            // Wait for chat to fully load before scrolling
+            setTimeout(() => {
+                scrollToMessage(urlInfo.messageId);
+            }, 1000);
         }
 
         return true;
