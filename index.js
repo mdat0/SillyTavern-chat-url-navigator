@@ -26,6 +26,11 @@ const originalSearch = window.location.search;
 const originalHash = window.location.hash;
 console.log('[Chat URL Navigator] Original URL at load:', originalUrl);
 
+// Remove file extension from filename
+function removeFileExtension(filename) {
+    return filename.replace(/\.[^/.]+$/, '');
+}
+
 // Extract readable chat title from chatId
 function extractChatTitle(chatId, charName) {
     if (!chatId) return '';
@@ -182,7 +187,8 @@ function updateBrowserUrl() {
     if (chatInfo.type === 'group') {
         newUrl = `${window.location.pathname}?nav=group&gid=${encodeURIComponent(chatInfo.groupId)}&cid=${encodeURIComponent(cleanChatId)}`;
     } else {
-        newUrl = `${window.location.pathname}?nav=char&avatar=${encodeURIComponent(chatInfo.avatar)}&cid=${encodeURIComponent(cleanChatId)}`;
+        const cleanAvatar = removeFileExtension(chatInfo.avatar);
+        newUrl = `${window.location.pathname}?nav=char&avatar=${encodeURIComponent(cleanAvatar)}&cid=${encodeURIComponent(cleanChatId)}`;
     }
 
     // Generate page title
@@ -299,9 +305,9 @@ async function navigateToChat(urlInfo) {
 
     try {
         if (urlInfo.type === 'character') {
-            // Find character by avatar
+            // Find character by avatar (compare without extension)
             const currentCharacters = context.characters;
-            const charIndex = currentCharacters.findIndex(c => c.avatar === urlInfo.avatar);
+            const charIndex = currentCharacters.findIndex(c => removeFileExtension(c.avatar) === urlInfo.avatar);
             if (charIndex === -1) {
                 toastr.error(`Character not found: ${urlInfo.avatar}`, 'Chat URL Navigator');
                 return false;
@@ -402,7 +408,8 @@ function generateChatHistoryItemUrl(fileName) {
     } else if (context.characterId !== undefined && context.characters[context.characterId]) {
         // Character chat
         const char = context.characters[context.characterId];
-        const params = `?nav=char&avatar=${encodeURIComponent(char.avatar)}&cid=${encodeURIComponent(cleanFileName)}`;
+        const cleanAvatar = removeFileExtension(char.avatar);
+        const params = `?nav=char&avatar=${encodeURIComponent(cleanAvatar)}&cid=${encodeURIComponent(cleanFileName)}`;
         return baseUrl + params;
     }
 
@@ -499,7 +506,7 @@ function handleChatHistoryMiddleClick(event) {
         const char = context.characters[context.characterId];
         chatInfo = {
             type: 'character',
-            avatar: char.avatar,
+            avatar: removeFileExtension(char.avatar),
             chatId: fileName
         };
     } else {
