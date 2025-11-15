@@ -1,9 +1,13 @@
 // Chat URL Navigator Extension
 // Assigns URLs to individual chats and allows opening them in new tabs
 
-import { extension_settings, getContext, loadExtensionSettings } from "../../../extensions.js";
-import { saveSettingsDebounced, eventSource, event_types, this_chid, characters, selected_group } from "../../../../script.js";
-import { groups } from "../../../group-chats.js";
+const {
+    eventSource,
+    event_types,
+    saveSettingsDebounced,
+} = SillyTavern.getContext();
+
+import { extension_settings } from "../../../extensions.js";
 
 const extensionName = "SillyTavern-chat-url-navigator";
 const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
@@ -18,20 +22,24 @@ let isNavigatingFromUrl = false;
 
 // Get current chat information
 function getCurrentChatInfo() {
-    const context = getContext();
+    const context = SillyTavern.getContext();
+    const currentThisChid = context.characterId;
+    const currentCharacters = context.characters;
+    const currentSelectedGroup = context.groupId;
+    const currentGroups = context.groups;
 
-    if (selected_group) {
-        const group = groups.find(x => x.id === selected_group);
+    if (currentSelectedGroup) {
+        const group = currentGroups.find(x => x.id === currentSelectedGroup);
         if (group) {
             return {
                 type: 'group',
-                groupId: selected_group,
+                groupId: currentSelectedGroup,
                 chatId: group.chat_id,
                 name: group.name
             };
         }
-    } else if (this_chid !== undefined && characters[this_chid]) {
-        const char = characters[this_chid];
+    } else if (currentThisChid !== undefined && currentCharacters[currentThisChid]) {
+        const char = currentCharacters[currentThisChid];
         return {
             type: 'character',
             avatar: char.avatar,
@@ -115,20 +123,21 @@ function parseUrlHash() {
 async function navigateToChat(urlInfo) {
     if (!urlInfo) return false;
 
-    const context = getContext();
+    const context = SillyTavern.getContext();
     isNavigatingFromUrl = true;
 
     try {
         if (urlInfo.type === 'character') {
             // Find character by avatar
-            const charIndex = characters.findIndex(c => c.avatar === urlInfo.avatar);
+            const currentCharacters = context.characters;
+            const charIndex = currentCharacters.findIndex(c => c.avatar === urlInfo.avatar);
             if (charIndex === -1) {
                 toastr.error(`Character not found: ${urlInfo.avatar}`, 'Chat URL Navigator');
                 return false;
             }
 
             // Check if we need to switch character
-            if (this_chid !== charIndex) {
+            if (context.characterId !== charIndex) {
                 await context.setCharacterId(charIndex);
             }
 
