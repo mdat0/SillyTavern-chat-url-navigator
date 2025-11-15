@@ -1,2 +1,6 @@
 node_modules/
 *.log
+
+.claude/
+CLAUDE.md
+example.html

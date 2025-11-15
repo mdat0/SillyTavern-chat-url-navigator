@@ -72,11 +72,9 @@ The extension provides the following configurable options:
 - Sharing URLs requires the recipient to have access to the same characters/chats
 - "Open in New Tab" uses localStorage for cross-tab communication (same browser only)
 
-## Support and Contributions
+## Disclaimer
 
-For issues and feature requests, please open an issue on GitHub.
-
-Contributions are welcome! Feel free to submit pull requests.
+This extension is written by Claude except this comment and I don't understand how it works at all.
 
 ## License
 
