@@ -24,7 +24,7 @@ Use SillyTavern's built-in extension installer:
 2. Go to Extensions panel
 3. Click "Install Extension"
 4. Enter this repository URL: `https://github.com/mdat0/SillyTavern-chat-url-navigator`
-5. Click "Save"
+5. Click "Install for all users" or "Install just for me"
 6. Reload the page
 
 ## Usage

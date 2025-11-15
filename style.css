@@ -79,3 +79,12 @@
     opacity: 0;
     cursor: pointer;
 }
+
+/* Ensure chat history buttons appear above link overlay for tooltips */
+.select_chat_block_wrapper .renameChatButton,
+.select_chat_block_wrapper .exportRawChatButton,
+.select_chat_block_wrapper .exportChatButton,
+.select_chat_block_wrapper .PastChat_cross {
+    position: relative;
+    z-index: 15;
+}
