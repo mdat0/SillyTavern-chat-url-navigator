@@ -81,7 +81,6 @@ function scrollToMessage(messageId) {
     const messageElement = document.querySelector(`#chat .mes[mesid="${messageId}"]`);
     if (!messageElement) {
         console.log(`[Chat URL Navigator] Message ${messageId} not found`);
-        toastr.warning(`Message #${messageId} not found`, 'Chat URL Navigator');
         return false;
     }
 
@@ -95,7 +94,6 @@ function scrollToMessage(messageId) {
     }, 2000);
 
     console.log(`[Chat URL Navigator] Scrolled to message ${messageId}`);
-    toastr.info(`Navigated to message #${messageId}`, 'Chat URL Navigator');
     return true;
 }
 
@@ -336,7 +334,7 @@ async function navigateToChat(urlInfo) {
             if (urlInfo.chatId) {
                 try {
                     await context.openCharacterChat(urlInfo.chatId);
-                    toastr.success(`Opened chat: ${urlInfo.chatId}`, 'Chat URL Navigator');
+                    console.log(`[Chat URL Navigator] Opened chat: ${urlInfo.chatId}`);
                 } catch (err) {
                     console.error('[Chat URL Navigator] Error opening chat:', err);
                     toastr.error(`Failed to open chat: ${urlInfo.chatId}`, 'Chat URL Navigator');
@@ -347,7 +345,7 @@ async function navigateToChat(urlInfo) {
             // Open group chat
             try {
                 await context.openGroupChat(urlInfo.groupId, urlInfo.chatId);
-                toastr.success(`Opened group chat`, 'Chat URL Navigator');
+                console.log(`[Chat URL Navigator] Opened group chat`);
             } catch (err) {
                 console.error('[Chat URL Navigator] Error opening group chat:', err);
                 toastr.error(`Failed to open group chat`, 'Chat URL Navigator');
@@ -357,10 +355,13 @@ async function navigateToChat(urlInfo) {
 
         // Scroll to specific message if specified
         if (urlInfo.messageId !== null && urlInfo.messageId !== undefined) {
-            // Wait for chat to fully load before scrolling
-            setTimeout(() => {
-                scrollToMessage(urlInfo.messageId);
-            }, 1000);
+            // Try to scroll immediately, retry if message not found yet
+            if (!scrollToMessage(urlInfo.messageId)) {
+                // Retry after a short delay if message wasn't found
+                setTimeout(() => {
+                    scrollToMessage(urlInfo.messageId);
+                }, 500);
+            }
         }
 
         return true;
