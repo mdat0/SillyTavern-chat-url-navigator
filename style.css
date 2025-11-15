@@ -1,0 +1,68 @@
+/* Chat URL Navigator Extension Styles */
+
+.chat-url-navigator-settings {
+    margin-bottom: 10px;
+}
+
+.chat_url_nav_block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.chat_url_nav_block .checkbox_label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+.chat_url_nav_block .checkbox_label input[type="checkbox"] {
+    margin: 0;
+}
+
+.chat_url_nav_actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.chat_url_nav_actions .menu_button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.chat_url_nav_info {
+    margin-top: 8px;
+    padding: 8px;
+    background: var(--SmartThemeBlurTintColor);
+    border-radius: 4px;
+}
+
+.chat_url_nav_info small {
+    color: var(--SmartThemeBodyColor);
+    opacity: 0.8;
+}
+
+/* Chat header buttons */
+#chat_url_header_copy,
+#chat_url_header_newtab {
+    cursor: pointer;
+    padding: 5px;
+    margin: 0 2px;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+
+#chat_url_header_copy:hover,
+#chat_url_header_newtab:hover {
+    opacity: 1;
+}
+
+#chat_url_header_copy:active,
+#chat_url_header_newtab:active {
+    transform: scale(0.95);
+}
