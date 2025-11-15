@@ -20,6 +20,12 @@ const defaultSettings = {
 
 let isNavigatingFromUrl = false;
 
+// Store the original URL at load time (before it gets cleaned up)
+const originalUrl = window.location.href;
+const originalSearch = window.location.search;
+const originalHash = window.location.hash;
+console.log('[Chat URL Navigator] Original URL at load:', originalUrl);
+
 // Get current chat information
 function getCurrentChatInfo() {
     const context = SillyTavern.getContext();
@@ -142,8 +148,10 @@ function parseUrlHash() {
 }
 
 // Parse URL query parameters for chat navigation
-function parseUrlQueryParams() {
-    const params = new URLSearchParams(window.location.search);
+function parseUrlQueryParams(useOriginal = false) {
+    // Use original URL if specified (before it gets cleaned up)
+    const searchString = useOriginal ? originalSearch : window.location.search;
+    const params = new URLSearchParams(searchString);
 
     // Check for short URL first
     const chatlink = params.get('chatlink');
@@ -470,11 +478,20 @@ jQuery(async () => {
         }
 
         // Check query parameters first (more reliable than hash)
-        let urlInfo = parseUrlQueryParams();
+        // Use original URL in case current URL has been cleaned up
+        let urlInfo = parseUrlQueryParams(true);
         if (urlInfo) {
-            console.log('[Chat URL Navigator] URL info from query params:', urlInfo);
+            console.log('[Chat URL Navigator] URL info from original query params:', urlInfo);
             await navigateToChat(urlInfo);
             // Keep the URL as-is (don't clean up) so it can be shared
+            return;
+        }
+
+        // Also check current URL (in case it wasn't cleaned up)
+        urlInfo = parseUrlQueryParams(false);
+        if (urlInfo) {
+            console.log('[Chat URL Navigator] URL info from current query params:', urlInfo);
+            await navigateToChat(urlInfo);
             return;
         }
 
@@ -484,10 +501,9 @@ jQuery(async () => {
         if (urlInfo) {
             console.log('[Chat URL Navigator] Navigating to chat from URL:', urlInfo);
             await navigateToChat(urlInfo);
-        } else {
-            // Update URL for current chat if any
-            updateBrowserUrl();
         }
+        // Don't call updateBrowserUrl() here - it would clear query params before they're processed
+        // URL will be updated on CHAT_CHANGED event instead
     });
 
     // Also check URL immediately in case APP_READY already fired
