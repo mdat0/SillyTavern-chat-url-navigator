@@ -135,13 +135,15 @@ function generateChatUrl() {
     if (!chatInfo) return null;
 
     const baseUrl = window.location.origin + window.location.pathname;
+    // Remove .jsonl extension from chatId for cleaner URLs
+    const cleanChatId = chatInfo.chatId.replace(/\.jsonl$/i, '');
 
     // Use query parameters instead of hash (hash gets lost on server redirect)
     if (chatInfo.type === 'group') {
-        const params = `?nav=group&gid=${encodeURIComponent(chatInfo.groupId)}&cid=${encodeURIComponent(chatInfo.chatId)}`;
+        const params = `?nav=group&gid=${encodeURIComponent(chatInfo.groupId)}&cid=${encodeURIComponent(cleanChatId)}`;
         return baseUrl + params;
     } else {
-        const params = `?nav=char&avatar=${encodeURIComponent(chatInfo.avatar)}&cid=${encodeURIComponent(chatInfo.chatId)}`;
+        const params = `?nav=char&avatar=${encodeURIComponent(chatInfo.avatar)}&cid=${encodeURIComponent(cleanChatId)}`;
         return baseUrl + params;
     }
 }
@@ -196,11 +198,13 @@ function updateBrowserUrl() {
     }
 
     // Use query parameters for consistency (they survive server redirects)
+    // Remove .jsonl extension from chatId for cleaner URLs
+    const cleanChatId = chatInfo.chatId.replace(/\.jsonl$/i, '');
     let newUrl;
     if (chatInfo.type === 'group') {
-        newUrl = `${window.location.pathname}?nav=group&gid=${encodeURIComponent(chatInfo.groupId)}&cid=${encodeURIComponent(chatInfo.chatId)}`;
+        newUrl = `${window.location.pathname}?nav=group&gid=${encodeURIComponent(chatInfo.groupId)}&cid=${encodeURIComponent(cleanChatId)}`;
     } else {
-        newUrl = `${window.location.pathname}?nav=char&avatar=${encodeURIComponent(chatInfo.avatar)}&cid=${encodeURIComponent(chatInfo.chatId)}`;
+        newUrl = `${window.location.pathname}?nav=char&avatar=${encodeURIComponent(chatInfo.avatar)}&cid=${encodeURIComponent(cleanChatId)}`;
     }
 
     // Generate page title
@@ -334,8 +338,10 @@ async function navigateToChat(urlInfo) {
             // Open specific chat
             if (urlInfo.chatId) {
                 try {
-                    await context.openCharacterChat(urlInfo.chatId);
-                    console.log(`[Chat URL Navigator] Opened chat: ${urlInfo.chatId}`);
+                    // Remove .jsonl extension if present (openCharacterChat expects filename without extension)
+                    const chatFileName = urlInfo.chatId.replace(/\.jsonl$/i, '');
+                    await context.openCharacterChat(chatFileName);
+                    console.log(`[Chat URL Navigator] Opened chat: ${chatFileName}`);
                 } catch (err) {
                     console.error('[Chat URL Navigator] Error opening chat:', err);
                     toastr.error(`Failed to open chat: ${urlInfo.chatId}`, 'Chat URL Navigator');
@@ -345,7 +351,9 @@ async function navigateToChat(urlInfo) {
         } else if (urlInfo.type === 'group') {
             // Open group chat
             try {
-                await context.openGroupChat(urlInfo.groupId, urlInfo.chatId);
+                // Remove .jsonl extension if present
+                const groupChatId = urlInfo.chatId.replace(/\.jsonl$/i, '');
+                await context.openGroupChat(urlInfo.groupId, groupChatId);
                 console.log(`[Chat URL Navigator] Opened group chat`);
             } catch (err) {
                 console.error('[Chat URL Navigator] Error opening group chat:', err);
@@ -629,20 +637,20 @@ function handleChatHistoryMiddleClick(event) {
     const context = SillyTavern.getContext();
 
     // Prepare chat info for new tab
-    // Note: fileName includes .jsonl extension, which is needed for the URL
+    // Note: fileName from file_name attribute does NOT include .jsonl extension
     let chatInfo;
     if (context.groupId) {
         chatInfo = {
             type: 'group',
             groupId: context.groupId,
-            chatId: fileName.endsWith('.jsonl') ? fileName : fileName + '.jsonl'
+            chatId: fileName
         };
     } else if (context.characterId !== undefined && context.characters[context.characterId]) {
         const char = context.characters[context.characterId];
         chatInfo = {
             type: 'character',
             avatar: char.avatar,
-            chatId: fileName.endsWith('.jsonl') ? fileName : fileName + '.jsonl'
+            chatId: fileName
         };
     } else {
         return;
