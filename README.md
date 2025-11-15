@@ -46,7 +46,7 @@ URLs use query parameters for reliable navigation:
 
 Example:
 ```
-http://127.0.0.1:8000/?nav=char&avatar=MyCharacter.png&cid=MyCharacter%20-%202025-11-15%4010h30m00s&msg=42
+http://127.0.0.1:8000/?nav=char&avatar=MyCharacter&cid=MyCharacter%20-%202025-11-15%4010h30m00s&msg=42
 ```
 
 ### Browser Title Format
@@ -75,10 +75,6 @@ The browser tab title automatically updates to show:
 - URLs contain encoded chat filenames which can be long
 - Sharing URLs requires the recipient to have access to the same characters/chats
 - Middle-click "Open in New Tab" uses localStorage for cross-tab communication (same browser only)
-
-## Disclaimer
-
-This extension is written by Claude except this comment and I don't understand how it works at all.
 
 ## License
 

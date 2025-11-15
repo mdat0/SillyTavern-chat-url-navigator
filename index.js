@@ -9,7 +9,20 @@ const {
 import { extension_settings } from "../../../extensions.js";
 
 const extensionName = "SillyTavern-chat-url-navigator";
-const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
+
+const CONSTANTS = {
+    DEFAULT_TITLE: 'SillyTavern',
+    STORAGE_KEY_PREFIX: 'chat_url_nav_',
+    STORAGE_PENDING_KEY: 'chat_url_navigator_pending',
+    TIMEOUT_NAVIGATION_FLAG_RESET: 500,
+    TIMEOUT_TITLE_UPDATE_DELAY: 600,
+    TIMEOUT_RACE_CONDITION_WINDOW: 2000,
+    TIMEOUT_PENDING_NAV_EXPIRY: 10000,
+    SHORT_URL_EXPIRY_MS: 7 * 24 * 60 * 60 * 1000, // 7 days
+    TIMEOUT_OBSERVER_RETRY: 1000,
+    TIMEOUT_DELAYED_URL_CHECK: 1000,
+    HIGHLIGHT_DURATION: 2000,
+};
 
 const defaultSettings = {
     enabled: true,
@@ -31,12 +44,65 @@ function removeFileExtension(filename) {
     return filename.replace(/\.[^/.]+$/, '');
 }
 
+// Remove .jsonl extension from chat ID
+function removeChatExtension(chatId) {
+    return chatId ? chatId.replace(/\.jsonl$/i, '') : '';
+}
+
+// Show error message to user
+function showError(message) {
+    console.error(`[Chat URL Navigator] ${message}`);
+    if (typeof toastr !== 'undefined') {
+        toastr.error(message, 'Chat URL Navigator');
+    }
+}
+
+// Schedule document title update after navigation
+function scheduleDocumentTitleUpdate(delay = CONSTANTS.TIMEOUT_TITLE_UPDATE_DELAY) {
+    setTimeout(() => {
+        const chatInfo = getCurrentChatInfo();
+        updateDocumentTitle(chatInfo);
+    }, delay);
+}
+
+// Build URL for chat info
+function buildChatUrl(chatInfo, baseUrl = window.location.pathname) {
+    const cleanChatId = removeChatExtension(chatInfo.chatId);
+
+    if (chatInfo.type === 'group') {
+        return `${baseUrl}?nav=group&gid=${encodeURIComponent(chatInfo.groupId)}&cid=${encodeURIComponent(cleanChatId)}`;
+    } else {
+        const cleanAvatar = removeFileExtension(chatInfo.avatar);
+        return `${baseUrl}?nav=char&avatar=${encodeURIComponent(cleanAvatar)}&cid=${encodeURIComponent(cleanChatId)}`;
+    }
+}
+
+// Create chat info object for current context and given filename
+function createChatInfoForFile(fileName) {
+    const context = SillyTavern.getContext();
+    if (context.groupId) {
+        return {
+            type: 'group',
+            groupId: context.groupId,
+            chatId: fileName
+        };
+    } else if (context.characterId !== undefined && context.characters[context.characterId]) {
+        const char = context.characters[context.characterId];
+        return {
+            type: 'character',
+            avatar: removeFileExtension(char.avatar),
+            chatId: fileName
+        };
+    }
+    return null;
+}
+
 // Extract readable chat title from chatId
 function extractChatTitle(chatId, charName) {
     if (!chatId) return '';
 
     // Remove file extension (.jsonl)
-    let title = chatId.replace(/\.jsonl$/i, '');
+    let title = removeChatExtension(chatId);
 
     // If character name is provided, remove it from the beginning
     // "Alice - The user edited title - 2024-11-15@10h30m45s" -> "The user edited title - 2024-11-15@10h30m45s"
@@ -50,7 +116,7 @@ function extractChatTitle(chatId, charName) {
 // Generate page title based on chat info
 function generatePageTitle(chatInfo) {
     if (!chatInfo) {
-        return 'SillyTavern';
+        return CONSTANTS.DEFAULT_TITLE;
     }
 
     // For character chats, pass the name to remove it from the beginning of chatId
@@ -60,12 +126,12 @@ function generatePageTitle(chatInfo) {
 
     if (chatInfo.type === 'group') {
         return chatTitle
-            ? `${chatInfo.name} - ${chatTitle} - SillyTavern`
-            : `${chatInfo.name} (Group) - SillyTavern`;
+            ? `${chatInfo.name} - ${chatTitle} - ${CONSTANTS.DEFAULT_TITLE}`
+            : `${chatInfo.name} (Group) - ${CONSTANTS.DEFAULT_TITLE}`;
     } else {
         return chatTitle
-            ? `${chatInfo.name} - ${chatTitle} - SillyTavern`
-            : `${chatInfo.name} - SillyTavern`;
+            ? `${chatInfo.name} - ${chatTitle} - ${CONSTANTS.DEFAULT_TITLE}`
+            : `${chatInfo.name} - ${CONSTANTS.DEFAULT_TITLE}`;
     }
 }
 
@@ -94,7 +160,7 @@ function scrollToMessage(messageId) {
     messageElement.classList.add('flash');
     setTimeout(() => {
         messageElement.classList.remove('flash');
-    }, 2000);
+    }, CONSTANTS.HIGHLIGHT_DURATION);
 
     console.log(`[Chat URL Navigator] Scrolled to message ${messageId}`);
     return true;
@@ -131,24 +197,6 @@ function getCurrentChatInfo() {
     return null;
 }
 
-// Generate a short URL using localStorage
-function generateShortUrl() {
-    const chatInfo = getCurrentChatInfo();
-    if (!chatInfo) return null;
-
-    const shortId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
-    const shortUrlData = {
-        timestamp: Date.now(),
-        chatInfo: chatInfo
-    };
-
-    // Store in localStorage with the short ID
-    localStorage.setItem(`chat_url_nav_${shortId}`, JSON.stringify(shortUrlData));
-
-    const baseUrl = window.location.origin + window.location.pathname;
-    return `${baseUrl}?chatlink=${shortId}`;
-}
-
 // Update browser URL to reflect current chat
 function updateBrowserUrl() {
     console.log('[Chat URL Navigator] updateBrowserUrl called, isNavigatingFromUrl:', isNavigatingFromUrl, 'appReady:', appReady);
@@ -166,30 +214,21 @@ function updateBrowserUrl() {
     console.log('[Chat URL Navigator] chatInfo:', chatInfo);
     if (!chatInfo) {
         // Don't clear URL if we just navigated (avoid race condition)
-        if (Date.now() - lastNavigationTime < 2000) {
+        if (Date.now() - lastNavigationTime < CONSTANTS.TIMEOUT_RACE_CONDITION_WINDOW) {
             console.log('[Chat URL Navigator] Skipping URL clear - recent navigation');
             return;
         }
         // Clear URL if no chat is open
         if (window.location.search || window.location.hash) {
             console.log('[Chat URL Navigator] Clearing URL to pathname');
-            const defaultTitle = 'SillyTavern';
-            window.history.pushState(null, defaultTitle, window.location.pathname);
-            document.title = defaultTitle;
+            window.history.pushState(null, CONSTANTS.DEFAULT_TITLE, window.location.pathname);
+            document.title = CONSTANTS.DEFAULT_TITLE;
         }
         return;
     }
 
     // Use query parameters for consistency (they survive server redirects)
-    // Remove .jsonl extension from chatId for cleaner URLs
-    const cleanChatId = chatInfo.chatId.replace(/\.jsonl$/i, '');
-    let newUrl;
-    if (chatInfo.type === 'group') {
-        newUrl = `${window.location.pathname}?nav=group&gid=${encodeURIComponent(chatInfo.groupId)}&cid=${encodeURIComponent(cleanChatId)}`;
-    } else {
-        const cleanAvatar = removeFileExtension(chatInfo.avatar);
-        newUrl = `${window.location.pathname}?nav=char&avatar=${encodeURIComponent(cleanAvatar)}&cid=${encodeURIComponent(cleanChatId)}`;
-    }
+    const newUrl = buildChatUrl(chatInfo);
 
     // Generate page title
     const pageTitle = generatePageTitle(chatInfo);
@@ -241,12 +280,12 @@ function parseUrlQueryParams(useOriginal = false) {
     // Check for short URL first
     const chatlink = params.get('chatlink');
     if (chatlink) {
-        const shortUrlData = localStorage.getItem(`chat_url_nav_${chatlink}`);
+        const shortUrlData = localStorage.getItem(`${CONSTANTS.STORAGE_KEY_PREFIX}${chatlink}`);
         if (shortUrlData) {
             try {
                 const data = JSON.parse(shortUrlData);
                 // Check if not too old (7 days)
-                if (Date.now() - data.timestamp < 7 * 24 * 60 * 60 * 1000) {
+                if (Date.now() - data.timestamp < CONSTANTS.SHORT_URL_EXPIRY_MS) {
                     return {
                         type: data.chatInfo.type,
                         avatar: data.chatInfo.avatar,
@@ -309,7 +348,7 @@ async function navigateToChat(urlInfo) {
             const currentCharacters = context.characters;
             const charIndex = currentCharacters.findIndex(c => removeFileExtension(c.avatar) === urlInfo.avatar);
             if (charIndex === -1) {
-                toastr.error(`Character not found: ${urlInfo.avatar}`, 'Chat URL Navigator');
+                showError(`Character not found: ${urlInfo.avatar}`);
                 return false;
             }
 
@@ -323,12 +362,12 @@ async function navigateToChat(urlInfo) {
             if (urlInfo.chatId) {
                 try {
                     // Remove .jsonl extension if present (openCharacterChat expects filename without extension)
-                    const chatFileName = urlInfo.chatId.replace(/\.jsonl$/i, '');
+                    const chatFileName = removeChatExtension(urlInfo.chatId);
                     await context.openCharacterChat(chatFileName);
                     console.log(`[Chat URL Navigator] Opened chat: ${chatFileName}`);
                 } catch (err) {
                     console.error('[Chat URL Navigator] Error opening chat:', err);
-                    toastr.error(`Failed to open chat: ${urlInfo.chatId}`, 'Chat URL Navigator');
+                    showError(`Failed to open chat: ${urlInfo.chatId}`);
                     return false;
                 }
             }
@@ -336,12 +375,12 @@ async function navigateToChat(urlInfo) {
             // Open group chat
             try {
                 // Remove .jsonl extension if present
-                const groupChatId = urlInfo.chatId.replace(/\.jsonl$/i, '');
+                const groupChatId = removeChatExtension(urlInfo.chatId);
                 await context.openGroupChat(urlInfo.groupId, groupChatId);
                 console.log(`[Chat URL Navigator] Opened group chat`);
             } catch (err) {
                 console.error('[Chat URL Navigator] Error opening group chat:', err);
-                toastr.error(`Failed to open group chat`, 'Chat URL Navigator');
+                showError(`Failed to open group chat`);
                 return false;
             }
         }
@@ -353,7 +392,7 @@ async function navigateToChat(urlInfo) {
                 // Retry after a short delay if message wasn't found
                 setTimeout(() => {
                     scrollToMessage(urlInfo.messageId);
-                }, 500);
+                }, CONSTANTS.TIMEOUT_NAVIGATION_FLAG_RESET);
             }
         }
 
@@ -362,7 +401,7 @@ async function navigateToChat(urlInfo) {
         // Reset flag after a short delay to allow chat change events to fire
         setTimeout(() => {
             isNavigatingFromUrl = false;
-        }, 500);
+        }, CONSTANTS.TIMEOUT_NAVIGATION_FLAG_RESET);
     }
 }
 
@@ -396,24 +435,11 @@ function createSettingsHtml() {
 
 // Generate URL for a specific chat item in the history panel
 function generateChatHistoryItemUrl(fileName) {
-    const context = SillyTavern.getContext();
+    const chatInfo = createChatInfoForFile(fileName);
+    if (!chatInfo) return null;
+
     const baseUrl = window.location.origin + window.location.pathname;
-    // Remove .jsonl extension from fileName for cleaner URLs
-    const cleanFileName = fileName.replace(/\.jsonl$/i, '');
-
-    if (context.groupId) {
-        // Group chat
-        const params = `?nav=group&gid=${encodeURIComponent(context.groupId)}&cid=${encodeURIComponent(cleanFileName)}`;
-        return baseUrl + params;
-    } else if (context.characterId !== undefined && context.characters[context.characterId]) {
-        // Character chat
-        const char = context.characters[context.characterId];
-        const cleanAvatar = removeFileExtension(char.avatar);
-        const params = `?nav=char&avatar=${encodeURIComponent(cleanAvatar)}&cid=${encodeURIComponent(cleanFileName)}`;
-        return baseUrl + params;
-    }
-
-    return null;
+    return buildChatUrl(chatInfo, baseUrl);
 }
 
 // Add link overlay to a single chat history item
@@ -490,35 +516,17 @@ function handleChatHistoryMiddleClick(event) {
     event.preventDefault();
     event.stopPropagation();
 
-    // Get current context to determine chat type
-    const context = SillyTavern.getContext();
-
     // Prepare chat info for new tab
     // Note: fileName from file_name attribute does NOT include .jsonl extension
-    let chatInfo;
-    if (context.groupId) {
-        chatInfo = {
-            type: 'group',
-            groupId: context.groupId,
-            chatId: fileName
-        };
-    } else if (context.characterId !== undefined && context.characters[context.characterId]) {
-        const char = context.characters[context.characterId];
-        chatInfo = {
-            type: 'character',
-            avatar: removeFileExtension(char.avatar),
-            chatId: fileName
-        };
-    } else {
-        return;
-    }
+    const chatInfo = createChatInfoForFile(fileName);
+    if (!chatInfo) return;
 
     // Store chat info in localStorage for the new tab
     const pendingNavigation = {
         timestamp: Date.now(),
         chatInfo: chatInfo
     };
-    localStorage.setItem('chat_url_navigator_pending', JSON.stringify(pendingNavigation));
+    localStorage.setItem(CONSTANTS.STORAGE_PENDING_KEY, JSON.stringify(pendingNavigation));
 
     // Open new tab
     const baseUrl = window.location.origin + window.location.pathname;
@@ -532,7 +540,7 @@ function setupChatHistoryObserver() {
     const selectChatDiv = document.getElementById('select_chat_div');
     if (!selectChatDiv) {
         console.log('[Chat URL Navigator] Chat history container not found, retrying...');
-        setTimeout(setupChatHistoryObserver, 1000);
+        setTimeout(setupChatHistoryObserver, CONSTANTS.TIMEOUT_OBSERVER_RETRY);
         return;
     }
 
@@ -574,101 +582,139 @@ function setupChatHistoryObserver() {
     console.log('[Chat URL Navigator] Chat history observer setup complete');
 }
 
-// Initialize the extension
-jQuery(async () => {
-    // Add settings panel
-    const settingsHtml = createSettingsHtml();
-    $("#extensions_settings").append(settingsHtml);
+// Handle pending navigation from localStorage (Open in New Tab)
+async function handlePendingNavigation() {
+    const pendingNavStr = localStorage.getItem(CONSTANTS.STORAGE_PENDING_KEY);
+    if (!pendingNavStr) return false;
 
-    // Load settings
-    await loadSettings();
+    try {
+        const pendingNav = JSON.parse(pendingNavStr);
+        // Only use if less than 10 seconds old
+        if (Date.now() - pendingNav.timestamp < CONSTANTS.TIMEOUT_PENDING_NAV_EXPIRY) {
+            console.log('[Chat URL Navigator] Found pending navigation:', pendingNav.chatInfo);
+            localStorage.removeItem(CONSTANTS.STORAGE_PENDING_KEY);
 
-    // Setup chat history observer
-    setupChatHistoryObserver();
-
-    // Handle URL navigation on app ready
-    eventSource.on(event_types.APP_READY, async () => {
-        console.log('[Chat URL Navigator] APP_READY event fired');
-        console.log('[Chat URL Navigator] Current URL:', window.location.href);
-        console.log('[Chat URL Navigator] Current hash:', window.location.hash);
-        appReady = true;
-        if (!extension_settings[extensionName].enabled) return;
-
-        // First check localStorage for pending navigation (from "Open in New Tab")
-        const pendingNavStr = localStorage.getItem('chat_url_navigator_pending');
-        if (pendingNavStr) {
-            try {
-                const pendingNav = JSON.parse(pendingNavStr);
-                // Only use if less than 10 seconds old
-                if (Date.now() - pendingNav.timestamp < 10000) {
-                    console.log('[Chat URL Navigator] Found pending navigation:', pendingNav.chatInfo);
-                    localStorage.removeItem('chat_url_navigator_pending');
-
-                    const urlInfo = {
-                        type: pendingNav.chatInfo.type,
-                        avatar: pendingNav.chatInfo.avatar,
-                        chatId: pendingNav.chatInfo.chatId,
-                        groupId: pendingNav.chatInfo.groupId
-                    };
-                    await navigateToChat(urlInfo);
-                    // Update URL to reflect the opened chat (wait for flag to reset)
-                    setTimeout(() => {
-                        updateBrowserUrl();
-                    }, 600);
-                    return;
-                } else {
-                    // Too old, remove it
-                    localStorage.removeItem('chat_url_navigator_pending');
-                }
-            } catch (err) {
-                console.error('[Chat URL Navigator] Error parsing pending navigation:', err);
-                localStorage.removeItem('chat_url_navigator_pending');
-            }
-        }
-
-        // Check query parameters first (more reliable than hash)
-        // Use original URL in case current URL has been cleaned up
-        let urlInfo = parseUrlQueryParams(true);
-        if (urlInfo) {
-            console.log('[Chat URL Navigator] URL info from original query params:', urlInfo);
+            const urlInfo = {
+                type: pendingNav.chatInfo.type,
+                avatar: pendingNav.chatInfo.avatar,
+                chatId: pendingNav.chatInfo.chatId,
+                groupId: pendingNav.chatInfo.groupId
+            };
             await navigateToChat(urlInfo);
-            // Update title after navigation completes
+            // Update URL to reflect the opened chat (wait for flag to reset)
             setTimeout(() => {
-                const chatInfo = getCurrentChatInfo();
-                updateDocumentTitle(chatInfo);
-            }, 600);
-            // Keep the URL as-is (don't clean up) so it can be shared
-            return;
+                updateBrowserUrl();
+            }, CONSTANTS.TIMEOUT_TITLE_UPDATE_DELAY);
+            return true;
+        } else {
+            // Too old, remove it
+            localStorage.removeItem(CONSTANTS.STORAGE_PENDING_KEY);
         }
+    } catch (err) {
+        console.error('[Chat URL Navigator] Error parsing pending navigation:', err);
+        localStorage.removeItem(CONSTANTS.STORAGE_PENDING_KEY);
+    }
+    return false;
+}
 
-        // Also check current URL (in case it wasn't cleaned up)
-        urlInfo = parseUrlQueryParams(false);
-        if (urlInfo) {
-            console.log('[Chat URL Navigator] URL info from current query params:', urlInfo);
-            await navigateToChat(urlInfo);
-            // Update title after navigation completes
-            setTimeout(() => {
-                const chatInfo = getCurrentChatInfo();
-                updateDocumentTitle(chatInfo);
-            }, 600);
-            return;
-        }
+// Handle URL-based navigation (query params or hash)
+async function handleUrlNavigation() {
+    // Check query parameters first (more reliable than hash)
+    // Use original URL in case current URL has been cleaned up
+    let urlInfo = parseUrlQueryParams(true);
+    if (urlInfo) {
+        console.log('[Chat URL Navigator] URL info from original query params:', urlInfo);
+        await navigateToChat(urlInfo);
+        scheduleDocumentTitleUpdate();
+        return true;
+    }
 
-        // Fall back to hash-based routing
+    // Also check current URL (in case it wasn't cleaned up)
+    urlInfo = parseUrlQueryParams(false);
+    if (urlInfo) {
+        console.log('[Chat URL Navigator] URL info from current query params:', urlInfo);
+        await navigateToChat(urlInfo);
+        scheduleDocumentTitleUpdate();
+        return true;
+    }
+
+    // Fall back to hash-based routing
+    urlInfo = parseUrlHash();
+    console.log('[Chat URL Navigator] URL info on APP_READY:', urlInfo);
+    if (urlInfo) {
+        console.log('[Chat URL Navigator] Navigating to chat from URL:', urlInfo);
+        await navigateToChat(urlInfo);
+        scheduleDocumentTitleUpdate();
+        return true;
+    }
+
+    return false;
+}
+
+// Main APP_READY handler
+async function onAppReady() {
+    console.log('[Chat URL Navigator] APP_READY event fired');
+    console.log('[Chat URL Navigator] Current URL:', window.location.href);
+    console.log('[Chat URL Navigator] Current hash:', window.location.hash);
+    appReady = true;
+
+    if (!extension_settings[extensionName].enabled) return;
+
+    // First check localStorage for pending navigation (from "Open in New Tab")
+    if (await handlePendingNavigation()) return;
+
+    // Handle URL-based navigation
+    await handleUrlNavigation();
+    // Don't call updateBrowserUrl() here - it would clear query params before they're processed
+    // URL will be updated on CHAT_CHANGED event instead
+}
+
+// Handle popstate event (browser back/forward)
+async function handlePopstate() {
+    console.log('[Chat URL Navigator] popstate event fired');
+    if (!extension_settings[extensionName].enabled) return;
+
+    // Check query parameters first (new format)
+    let urlInfo = parseUrlQueryParams();
+    if (!urlInfo) {
+        // Fall back to hash-based routing (old format for compatibility)
         urlInfo = parseUrlHash();
-        console.log('[Chat URL Navigator] URL info on APP_READY:', urlInfo);
-        if (urlInfo) {
-            console.log('[Chat URL Navigator] Navigating to chat from URL:', urlInfo);
-            await navigateToChat(urlInfo);
-            // Update title after navigation completes
-            setTimeout(() => {
-                const chatInfo = getCurrentChatInfo();
-                updateDocumentTitle(chatInfo);
-            }, 600);
-        }
-        // Don't call updateBrowserUrl() here - it would clear query params before they're processed
-        // URL will be updated on CHAT_CHANGED event instead
-    });
+    }
+    console.log('[Chat URL Navigator] URL info on popstate:', urlInfo);
+    if (urlInfo) {
+        await navigateToChat(urlInfo);
+        scheduleDocumentTitleUpdate();
+    } else {
+        // No chat info in URL, reset title
+        document.title = CONSTANTS.DEFAULT_TITLE;
+    }
+}
+
+// Handle hashchange event (manual URL edits)
+async function handleHashChange() {
+    console.log('[Chat URL Navigator] hashchange event fired');
+    if (!extension_settings[extensionName].enabled) return;
+    if (isNavigatingFromUrl) return;
+
+    const urlInfo = parseUrlHash();
+    if (urlInfo) {
+        await navigateToChat(urlInfo);
+    }
+}
+
+// Handle chat changed event
+function handleChatChanged() {
+    if (!extension_settings[extensionName].enabled) return;
+    console.log('[Chat URL Navigator] CHAT_CHANGED event fired');
+    updateBrowserUrl();
+}
+
+// Setup all event listeners
+function setupEventListeners() {
+    eventSource.on(event_types.APP_READY, onAppReady);
+    eventSource.on(event_types.CHAT_CHANGED, handleChatChanged);
+    window.addEventListener('popstate', handlePopstate);
+    window.addEventListener('hashchange', handleHashChange);
 
     // Also check URL immediately in case APP_READY already fired
     setTimeout(async () => {
@@ -682,51 +728,23 @@ jQuery(async () => {
             console.log('[Chat URL Navigator] Attempting delayed navigation:', urlInfo);
             await navigateToChat(urlInfo);
         }
-    }, 1000);
+    }, CONSTANTS.TIMEOUT_DELAYED_URL_CHECK);
+}
 
-    // Update URL when chat changes
-    eventSource.on(event_types.CHAT_CHANGED, () => {
-        if (!extension_settings[extensionName].enabled) return;
-        console.log('[Chat URL Navigator] CHAT_CHANGED event fired');
-        updateBrowserUrl();
-    });
+// Initialize the extension
+jQuery(async () => {
+    // Add settings panel
+    const settingsHtml = createSettingsHtml();
+    $("#extensions_settings").append(settingsHtml);
 
-    // Handle browser back/forward navigation
-    window.addEventListener('popstate', async () => {
-        console.log('[Chat URL Navigator] popstate event fired');
-        if (!extension_settings[extensionName].enabled) return;
+    // Load settings
+    await loadSettings();
 
-        // Check query parameters first (new format)
-        let urlInfo = parseUrlQueryParams();
-        if (!urlInfo) {
-            // Fall back to hash-based routing (old format for compatibility)
-            urlInfo = parseUrlHash();
-        }
-        console.log('[Chat URL Navigator] URL info on popstate:', urlInfo);
-        if (urlInfo) {
-            await navigateToChat(urlInfo);
-            // Update title after navigation completes
-            setTimeout(() => {
-                const chatInfo = getCurrentChatInfo();
-                updateDocumentTitle(chatInfo);
-            }, 600);
-        } else {
-            // No chat info in URL, reset title
-            document.title = 'SillyTavern';
-        }
-    });
+    // Setup chat history observer
+    setupChatHistoryObserver();
 
-    // Handle hash change (for manual URL edits)
-    window.addEventListener('hashchange', async () => {
-        console.log('[Chat URL Navigator] hashchange event fired');
-        if (!extension_settings[extensionName].enabled) return;
-        if (isNavigatingFromUrl) return;
-
-        const urlInfo = parseUrlHash();
-        if (urlInfo) {
-            await navigateToChat(urlInfo);
-        }
-    });
+    // Setup all event listeners
+    setupEventListeners();
 
     console.log('[Chat URL Navigator] Extension loaded');
 });
