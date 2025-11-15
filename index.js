@@ -58,12 +58,13 @@ function generateChatUrl() {
 
     const baseUrl = window.location.origin + window.location.pathname;
 
+    // Use query parameters instead of hash (hash gets lost on server redirect)
     if (chatInfo.type === 'group') {
-        const hash = `#/group/${encodeURIComponent(chatInfo.groupId)}/${encodeURIComponent(chatInfo.chatId)}`;
-        return baseUrl + hash;
+        const params = `?nav=group&gid=${encodeURIComponent(chatInfo.groupId)}&cid=${encodeURIComponent(chatInfo.chatId)}`;
+        return baseUrl + params;
     } else {
-        const hash = `#/char/${encodeURIComponent(chatInfo.avatar)}/${encodeURIComponent(chatInfo.chatId)}`;
-        return baseUrl + hash;
+        const params = `?nav=char&avatar=${encodeURIComponent(chatInfo.avatar)}&cid=${encodeURIComponent(chatInfo.chatId)}`;
+        return baseUrl + params;
     }
 }
 
@@ -114,6 +115,38 @@ function parseUrlHash() {
             groupId: decodeURIComponent(parts[1]),
             chatId: decodeURIComponent(parts[2])
         };
+    }
+
+    return null;
+}
+
+// Parse URL query parameters for chat navigation
+function parseUrlQueryParams() {
+    const params = new URLSearchParams(window.location.search);
+    const navType = params.get('nav');
+
+    if (!navType) return null;
+
+    if (navType === 'char') {
+        const avatar = params.get('avatar');
+        const chatId = params.get('cid');
+        if (avatar && chatId) {
+            return {
+                type: 'character',
+                avatar: avatar,
+                chatId: chatId
+            };
+        }
+    } else if (navType === 'group') {
+        const groupId = params.get('gid');
+        const chatId = params.get('cid');
+        if (groupId && chatId) {
+            return {
+                type: 'group',
+                groupId: groupId,
+                chatId: chatId
+            };
+        }
     }
 
     return null;
@@ -388,7 +421,18 @@ jQuery(async () => {
             }
         }
 
-        const urlInfo = parseUrlHash();
+        // Check query parameters first (more reliable than hash)
+        let urlInfo = parseUrlQueryParams();
+        if (urlInfo) {
+            console.log('[Chat URL Navigator] URL info from query params:', urlInfo);
+            await navigateToChat(urlInfo);
+            // Clean up the URL after navigation
+            window.history.replaceState(null, '', window.location.pathname);
+            return;
+        }
+
+        // Fall back to hash-based routing
+        urlInfo = parseUrlHash();
         console.log('[Chat URL Navigator] URL info on APP_READY:', urlInfo);
         if (urlInfo) {
             console.log('[Chat URL Navigator] Navigating to chat from URL:', urlInfo);
