@@ -75,22 +75,25 @@ function updateBrowserUrl() {
 
     const chatInfo = getCurrentChatInfo();
     if (!chatInfo) {
-        // Clear hash if no chat is open
-        if (window.location.hash) {
+        // Clear URL if no chat is open
+        if (window.location.search || window.location.hash) {
             window.history.pushState(null, '', window.location.pathname);
         }
         return;
     }
 
-    let newHash;
+    // Use query parameters for consistency (they survive server redirects)
+    let newUrl;
     if (chatInfo.type === 'group') {
-        newHash = `#/group/${encodeURIComponent(chatInfo.groupId)}/${encodeURIComponent(chatInfo.chatId)}`;
+        newUrl = `${window.location.pathname}?nav=group&gid=${encodeURIComponent(chatInfo.groupId)}&cid=${encodeURIComponent(chatInfo.chatId)}`;
     } else {
-        newHash = `#/char/${encodeURIComponent(chatInfo.avatar)}/${encodeURIComponent(chatInfo.chatId)}`;
+        newUrl = `${window.location.pathname}?nav=char&avatar=${encodeURIComponent(chatInfo.avatar)}&cid=${encodeURIComponent(chatInfo.chatId)}`;
     }
 
-    if (window.location.hash !== newHash) {
-        window.history.pushState(null, '', newHash);
+    // Check if URL needs updating
+    const currentUrl = window.location.pathname + window.location.search;
+    if (currentUrl !== newUrl) {
+        window.history.pushState(null, '', newUrl);
     }
 }
 
@@ -410,6 +413,10 @@ jQuery(async () => {
                         groupId: pendingNav.chatInfo.groupId
                     };
                     await navigateToChat(urlInfo);
+                    // Update URL to reflect the opened chat (wait for flag to reset)
+                    setTimeout(() => {
+                        updateBrowserUrl();
+                    }, 600);
                     return;
                 } else {
                     // Too old, remove it
@@ -469,7 +476,12 @@ jQuery(async () => {
         console.log('[Chat URL Navigator] popstate event fired');
         if (!extension_settings[extensionName].enabled) return;
 
-        const urlInfo = parseUrlHash();
+        // Check query parameters first (new format)
+        let urlInfo = parseUrlQueryParams();
+        if (!urlInfo) {
+            // Fall back to hash-based routing (old format for compatibility)
+            urlInfo = parseUrlHash();
+        }
         console.log('[Chat URL Navigator] URL info on popstate:', urlInfo);
         if (urlInfo) {
             await navigateToChat(urlInfo);
