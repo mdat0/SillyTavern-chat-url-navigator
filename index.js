@@ -19,6 +19,7 @@ const defaultSettings = {
 };
 
 let isNavigatingFromUrl = false;
+let lastNavigationTime = 0;
 
 // Store the original URL at load time (before it gets cleaned up)
 const originalUrl = window.location.href;
@@ -99,6 +100,11 @@ function updateBrowserUrl() {
 
     const chatInfo = getCurrentChatInfo();
     if (!chatInfo) {
+        // Don't clear URL if we just navigated (avoid race condition)
+        if (Date.now() - lastNavigationTime < 2000) {
+            console.log('[Chat URL Navigator] Skipping URL clear - recent navigation');
+            return;
+        }
         // Clear URL if no chat is open
         if (window.location.search || window.location.hash) {
             window.history.pushState(null, '', window.location.pathname);
@@ -210,6 +216,7 @@ async function navigateToChat(urlInfo) {
 
     const context = SillyTavern.getContext();
     isNavigatingFromUrl = true;
+    lastNavigationTime = Date.now();
 
     try {
         if (urlInfo.type === 'character') {
