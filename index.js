@@ -343,9 +343,11 @@ jQuery(async () => {
 
     // Handle URL navigation on app ready
     eventSource.on(event_types.APP_READY, async () => {
+        console.log('[Chat URL Navigator] APP_READY event fired');
         if (!extension_settings[extensionName].enabled) return;
 
         const urlInfo = parseUrlHash();
+        console.log('[Chat URL Navigator] URL info on APP_READY:', urlInfo);
         if (urlInfo) {
             console.log('[Chat URL Navigator] Navigating to chat from URL:', urlInfo);
             await navigateToChat(urlInfo);
@@ -355,17 +357,32 @@ jQuery(async () => {
         }
     });
 
+    // Also check URL immediately in case APP_READY already fired
+    setTimeout(async () => {
+        console.log('[Chat URL Navigator] Delayed URL check');
+        if (!extension_settings[extensionName].enabled) return;
+
+        const urlInfo = parseUrlHash();
+        if (urlInfo) {
+            console.log('[Chat URL Navigator] Attempting delayed navigation:', urlInfo);
+            await navigateToChat(urlInfo);
+        }
+    }, 1000);
+
     // Update URL when chat changes
     eventSource.on(event_types.CHAT_CHANGED, () => {
         if (!extension_settings[extensionName].enabled) return;
+        console.log('[Chat URL Navigator] CHAT_CHANGED event fired');
         updateBrowserUrl();
     });
 
     // Handle browser back/forward navigation
     window.addEventListener('popstate', async () => {
+        console.log('[Chat URL Navigator] popstate event fired');
         if (!extension_settings[extensionName].enabled) return;
 
         const urlInfo = parseUrlHash();
+        console.log('[Chat URL Navigator] URL info on popstate:', urlInfo);
         if (urlInfo) {
             await navigateToChat(urlInfo);
         }
@@ -373,6 +390,7 @@ jQuery(async () => {
 
     // Handle hash change (for manual URL edits)
     window.addEventListener('hashchange', async () => {
+        console.log('[Chat URL Navigator] hashchange event fired');
         if (!extension_settings[extensionName].enabled) return;
         if (isNavigatingFromUrl) return;
 
