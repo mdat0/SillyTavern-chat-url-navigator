@@ -85,8 +85,8 @@ function scrollToMessage(messageId) {
         return false;
     }
 
-    // Scroll to the message
-    messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Scroll to the message instantly, aligned to top
+    messageElement.scrollIntoView({ behavior: 'instant', block: 'start' });
 
     // Add highlight effect
     messageElement.classList.add('flash');
