@@ -68,6 +68,24 @@ function generateChatUrl() {
     }
 }
 
+// Generate a short URL using localStorage
+function generateShortUrl() {
+    const chatInfo = getCurrentChatInfo();
+    if (!chatInfo) return null;
+
+    const shortId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    const shortUrlData = {
+        timestamp: Date.now(),
+        chatInfo: chatInfo
+    };
+
+    // Store in localStorage with the short ID
+    localStorage.setItem(`chat_url_nav_${shortId}`, JSON.stringify(shortUrlData));
+
+    const baseUrl = window.location.origin + window.location.pathname;
+    return `${baseUrl}?chatlink=${shortId}`;
+}
+
 // Update browser URL to reflect current chat
 function updateBrowserUrl() {
     if (!extension_settings[extensionName].autoUpdateUrl) return;
@@ -126,6 +144,29 @@ function parseUrlHash() {
 // Parse URL query parameters for chat navigation
 function parseUrlQueryParams() {
     const params = new URLSearchParams(window.location.search);
+
+    // Check for short URL first
+    const chatlink = params.get('chatlink');
+    if (chatlink) {
+        const shortUrlData = localStorage.getItem(`chat_url_nav_${chatlink}`);
+        if (shortUrlData) {
+            try {
+                const data = JSON.parse(shortUrlData);
+                // Check if not too old (7 days)
+                if (Date.now() - data.timestamp < 7 * 24 * 60 * 60 * 1000) {
+                    return {
+                        type: data.chatInfo.type,
+                        avatar: data.chatInfo.avatar,
+                        chatId: data.chatInfo.chatId,
+                        groupId: data.chatInfo.groupId
+                    };
+                }
+            } catch (err) {
+                console.error('[Chat URL Navigator] Error parsing short URL data:', err);
+            }
+        }
+    }
+
     const navType = params.get('nav');
 
     if (!navType) return null;
@@ -433,8 +474,7 @@ jQuery(async () => {
         if (urlInfo) {
             console.log('[Chat URL Navigator] URL info from query params:', urlInfo);
             await navigateToChat(urlInfo);
-            // Clean up the URL after navigation
-            window.history.replaceState(null, '', window.location.pathname);
+            // Keep the URL as-is (don't clean up) so it can be shared
             return;
         }
 
