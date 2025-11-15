@@ -66,3 +66,16 @@
 #chat_url_header_newtab:active {
     transform: scale(0.95);
 }
+
+/* Chat history link overlay */
+.chat-url-nav-link {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    pointer-events: none;
+    opacity: 0;
+    cursor: default;
+}

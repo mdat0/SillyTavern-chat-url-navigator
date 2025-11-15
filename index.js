@@ -21,6 +21,7 @@ const defaultSettings = {
 let isNavigatingFromUrl = false;
 let lastNavigationTime = 0;
 let appReady = false;
+let chatHistoryObserver = null;
 
 // Store the original URL at load time (before it gets cleaned up)
 const originalUrl = window.location.href;
@@ -531,6 +532,201 @@ function addChatHeaderButtons() {
     }
 }
 
+// Generate URL for a specific chat item in the history panel
+function generateChatHistoryItemUrl(fileName) {
+    const context = SillyTavern.getContext();
+    const baseUrl = window.location.origin + window.location.pathname;
+
+    if (context.groupId) {
+        // Group chat
+        const params = `?nav=group&gid=${encodeURIComponent(context.groupId)}&cid=${encodeURIComponent(fileName)}`;
+        return baseUrl + params;
+    } else if (context.characterId !== undefined && context.characters[context.characterId]) {
+        // Character chat
+        const char = context.characters[context.characterId];
+        const params = `?nav=char&avatar=${encodeURIComponent(char.avatar)}&cid=${encodeURIComponent(fileName)}`;
+        return baseUrl + params;
+    }
+
+    return null;
+}
+
+// Add link overlay to a single chat history item
+function addLinkToChatHistoryItem(wrapper) {
+    // Skip if already processed
+    if (wrapper.querySelector('.chat-url-nav-link')) return;
+
+    const selectChatBlock = wrapper.querySelector('.select_chat_block');
+    if (!selectChatBlock) return;
+
+    const fileName = selectChatBlock.getAttribute('file_name');
+    if (!fileName) return;
+
+    const url = generateChatHistoryItemUrl(fileName);
+    if (!url) return;
+
+    // Create transparent link overlay
+    const link = document.createElement('a');
+    link.href = url;
+    link.className = 'chat-url-nav-link';
+    link.setAttribute('data-chat-filename', fileName);
+
+    // Make wrapper position relative for absolute positioning of link
+    wrapper.style.position = 'relative';
+
+    wrapper.appendChild(link);
+}
+
+// Process all chat history items in the panel
+function processChatHistoryItems() {
+    const chatItems = document.querySelectorAll('#select_chat_div .select_chat_block_wrapper');
+    chatItems.forEach(wrapper => {
+        addLinkToChatHistoryItem(wrapper);
+    });
+}
+
+// Handle right-click on chat history items to show native link menu
+function handleChatHistoryContextMenu(event) {
+    const wrapper = event.target.closest('.select_chat_block_wrapper');
+    if (!wrapper) return;
+
+    const link = wrapper.querySelector('.chat-url-nav-link');
+    if (!link) return;
+
+    // Temporarily enable pointer events on the link
+    link.style.pointerEvents = 'auto';
+
+    // Create a synthetic right-click event on the link
+    const rect = link.getBoundingClientRect();
+    const linkEvent = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        button: 2,
+        buttons: 2,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        screenX: event.screenX,
+        screenY: event.screenY
+    });
+
+    // Prevent the original event from showing default context menu
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Dispatch the event on the link element
+    link.dispatchEvent(linkEvent);
+
+    // Reset pointer events after a short delay (after menu is shown)
+    setTimeout(() => {
+        link.style.pointerEvents = 'none';
+    }, 100);
+}
+
+// Handle middle-click on chat history items to open in new tab
+function handleChatHistoryMiddleClick(event) {
+    // Check if it's a middle click (button === 1)
+    if (event.button !== 1) return;
+
+    const wrapper = event.target.closest('.select_chat_block_wrapper');
+    if (!wrapper) return;
+
+    const selectChatBlock = wrapper.querySelector('.select_chat_block');
+    if (!selectChatBlock) return;
+
+    const fileName = selectChatBlock.getAttribute('file_name');
+    if (!fileName) return;
+
+    // Prevent default middle-click behavior
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Get current context to determine chat type
+    const context = SillyTavern.getContext();
+
+    // Prepare chat info for new tab
+    let chatInfo;
+    if (context.groupId) {
+        chatInfo = {
+            type: 'group',
+            groupId: context.groupId,
+            chatId: fileName
+        };
+    } else if (context.characterId !== undefined && context.characters[context.characterId]) {
+        const char = context.characters[context.characterId];
+        chatInfo = {
+            type: 'character',
+            avatar: char.avatar,
+            chatId: fileName
+        };
+    } else {
+        return;
+    }
+
+    // Store chat info in localStorage for the new tab
+    const pendingNavigation = {
+        timestamp: Date.now(),
+        chatInfo: chatInfo
+    };
+    localStorage.setItem('chat_url_navigator_pending', JSON.stringify(pendingNavigation));
+
+    // Open new tab
+    const baseUrl = window.location.origin + window.location.pathname;
+    window.open(baseUrl, '_blank');
+
+    console.log(`[Chat URL Navigator] Opening chat in new tab: ${fileName}`);
+}
+
+// Setup observer for chat history panel
+function setupChatHistoryObserver() {
+    const selectChatDiv = document.getElementById('select_chat_div');
+    if (!selectChatDiv) {
+        console.log('[Chat URL Navigator] Chat history container not found, retrying...');
+        setTimeout(setupChatHistoryObserver, 1000);
+        return;
+    }
+
+    // Process existing items
+    processChatHistoryItems();
+
+    // Observe for new items being added
+    chatHistoryObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                // Process newly added chat items
+                mutation.addedNodes.forEach(node => {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        if (node.classList && node.classList.contains('select_chat_block_wrapper')) {
+                            addLinkToChatHistoryItem(node);
+                        } else {
+                            // Check for nested wrappers
+                            const wrappers = node.querySelectorAll ? node.querySelectorAll('.select_chat_block_wrapper') : [];
+                            wrappers.forEach(wrapper => addLinkToChatHistoryItem(wrapper));
+                        }
+                    }
+                });
+            }
+        }
+    });
+
+    chatHistoryObserver.observe(selectChatDiv, {
+        childList: true,
+        subtree: true
+    });
+
+    // Add event listeners for right-click and middle-click
+    selectChatDiv.addEventListener('contextmenu', handleChatHistoryContextMenu);
+    selectChatDiv.addEventListener('auxclick', handleChatHistoryMiddleClick);
+    selectChatDiv.addEventListener('mousedown', (event) => {
+        // Prevent default middle-click scroll behavior
+        if (event.button === 1) {
+            event.preventDefault();
+        }
+    });
+
+    console.log('[Chat URL Navigator] Chat history observer setup complete');
+}
+
 // Initialize the extension
 jQuery(async () => {
     // Add settings panel
@@ -551,6 +747,9 @@ jQuery(async () => {
 
     // Add buttons to chat header
     addChatHeaderButtons();
+
+    // Setup chat history observer
+    setupChatHistoryObserver();
 
     // Handle URL navigation on app ready
     eventSource.on(event_types.APP_READY, async () => {
