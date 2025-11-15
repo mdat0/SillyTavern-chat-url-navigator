@@ -29,23 +29,19 @@ const originalHash = window.location.hash;
 console.log('[Chat URL Navigator] Original URL at load:', originalUrl);
 
 // Extract readable chat title from chatId
-function extractChatTitle(chatId) {
+function extractChatTitle(chatId, charName) {
     if (!chatId) return '';
 
     // Remove file extension (.jsonl)
     let title = chatId.replace(/\.jsonl$/i, '');
 
-    // For character chats: "CharName - 2024-11-15@10h30m45s" -> "2024-11-15@10h30m"
-    // For group chats: "2024-11-15@10h30m45s" or similar
-    const timestampMatch = title.match(/(\d{4}-\d{2}-\d{2})@(\d{2})h(\d{2})m/);
-    if (timestampMatch) {
-        // Return date and time (without seconds)
-        return `${timestampMatch[1]}@${timestampMatch[2]}h${timestampMatch[3]}m`;
+    // If character name is provided, remove it from the beginning
+    // "Alice - The user edited title - 2024-11-15@10h30m45s" -> "The user edited title - 2024-11-15@10h30m45s"
+    if (charName && title.startsWith(charName + ' - ')) {
+        title = title.substring(charName.length + 3); // +3 for " - "
     }
 
-    // If no timestamp pattern, return the last part after " - " or the whole thing
-    const parts = title.split(' - ');
-    return parts[parts.length - 1];
+    return title;
 }
 
 // Generate page title based on chat info
@@ -54,7 +50,10 @@ function generatePageTitle(chatInfo) {
         return 'SillyTavern';
     }
 
-    const chatTitle = extractChatTitle(chatInfo.chatId);
+    // For character chats, pass the name to remove it from the beginning of chatId
+    const chatTitle = chatInfo.type === 'character'
+        ? extractChatTitle(chatInfo.chatId, chatInfo.name)
+        : extractChatTitle(chatInfo.chatId);
 
     if (chatInfo.type === 'group') {
         return chatTitle
