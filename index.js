@@ -28,6 +28,53 @@ const originalSearch = window.location.search;
 const originalHash = window.location.hash;
 console.log('[Chat URL Navigator] Original URL at load:', originalUrl);
 
+// Extract readable chat title from chatId
+function extractChatTitle(chatId) {
+    if (!chatId) return '';
+
+    // Remove file extension (.jsonl)
+    let title = chatId.replace(/\.jsonl$/i, '');
+
+    // For character chats: "CharName - 2024-11-15@10h30m45s" -> "2024-11-15@10h30m"
+    // For group chats: "2024-11-15@10h30m45s" or similar
+    const timestampMatch = title.match(/(\d{4}-\d{2}-\d{2})@(\d{2})h(\d{2})m/);
+    if (timestampMatch) {
+        // Return date and time (without seconds)
+        return `${timestampMatch[1]}@${timestampMatch[2]}h${timestampMatch[3]}m`;
+    }
+
+    // If no timestamp pattern, return the last part after " - " or the whole thing
+    const parts = title.split(' - ');
+    return parts[parts.length - 1];
+}
+
+// Generate page title based on chat info
+function generatePageTitle(chatInfo) {
+    if (!chatInfo) {
+        return 'SillyTavern';
+    }
+
+    const chatTitle = extractChatTitle(chatInfo.chatId);
+
+    if (chatInfo.type === 'group') {
+        return chatTitle
+            ? `${chatInfo.name} - ${chatTitle} - SillyTavern`
+            : `${chatInfo.name} (Group) - SillyTavern`;
+    } else {
+        return chatTitle
+            ? `${chatInfo.name} - ${chatTitle} - SillyTavern`
+            : `${chatInfo.name} - SillyTavern`;
+    }
+}
+
+// Update document title
+function updateDocumentTitle(chatInfo) {
+    const newTitle = generatePageTitle(chatInfo);
+    if (document.title !== newTitle) {
+        document.title = newTitle;
+    }
+}
+
 // Get current chat information
 function getCurrentChatInfo() {
     const context = SillyTavern.getContext();
@@ -118,7 +165,9 @@ function updateBrowserUrl() {
         // Clear URL if no chat is open
         if (window.location.search || window.location.hash) {
             console.log('[Chat URL Navigator] Clearing URL to pathname');
-            window.history.pushState(null, '', window.location.pathname);
+            const defaultTitle = 'SillyTavern';
+            window.history.pushState(null, defaultTitle, window.location.pathname);
+            document.title = defaultTitle;
         }
         return;
     }
@@ -131,13 +180,19 @@ function updateBrowserUrl() {
         newUrl = `${window.location.pathname}?nav=char&avatar=${encodeURIComponent(chatInfo.avatar)}&cid=${encodeURIComponent(chatInfo.chatId)}`;
     }
 
+    // Generate page title
+    const pageTitle = generatePageTitle(chatInfo);
+
     // Check if URL needs updating
     const currentUrl = window.location.pathname + window.location.search;
     console.log('[Chat URL Navigator] currentUrl:', currentUrl, 'newUrl:', newUrl);
     if (currentUrl !== newUrl) {
-        console.log('[Chat URL Navigator] Updating URL to:', newUrl);
-        window.history.pushState(null, '', newUrl);
+        console.log('[Chat URL Navigator] Updating URL to:', newUrl, 'title:', pageTitle);
+        window.history.pushState(null, pageTitle, newUrl);
     }
+
+    // Always update document title (even if URL didn't change)
+    updateDocumentTitle(chatInfo);
 }
 
 // Parse URL hash and extract chat information
@@ -562,6 +617,14 @@ jQuery(async () => {
         console.log('[Chat URL Navigator] URL info on popstate:', urlInfo);
         if (urlInfo) {
             await navigateToChat(urlInfo);
+            // Update title after navigation completes
+            setTimeout(() => {
+                const chatInfo = getCurrentChatInfo();
+                updateDocumentTitle(chatInfo);
+            }, 600);
+        } else {
+            // No chat info in URL, reset title
+            document.title = 'SillyTavern';
         }
     });
 
