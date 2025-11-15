@@ -571,6 +571,28 @@ function addLinkToChatHistoryItem(wrapper) {
     link.className = 'chat-url-nav-link';
     link.setAttribute('data-chat-filename', fileName);
 
+    // Prevent left-click navigation, simulate click on underlying element
+    link.addEventListener('click', (e) => {
+        e.preventDefault();
+        // Temporarily hide link, click through to underlying element
+        link.style.pointerEvents = 'none';
+        const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
+        link.style.pointerEvents = 'auto';
+        if (elementBelow && elementBelow !== link) {
+            elementBelow.click();
+        }
+    });
+
+    // Handle middle-click to open in new tab
+    link.addEventListener('auxclick', (e) => {
+        if (e.button === 1) {
+            e.preventDefault();
+            e.stopPropagation();
+            // Trigger our middle-click handler
+            handleChatHistoryMiddleClick(e);
+        }
+    });
+
     // Make wrapper position relative for absolute positioning of link
     wrapper.style.position = 'relative';
 
@@ -583,44 +605,6 @@ function processChatHistoryItems() {
     chatItems.forEach(wrapper => {
         addLinkToChatHistoryItem(wrapper);
     });
-}
-
-// Handle right-click on chat history items to show native link menu
-function handleChatHistoryContextMenu(event) {
-    const wrapper = event.target.closest('.select_chat_block_wrapper');
-    if (!wrapper) return;
-
-    const link = wrapper.querySelector('.chat-url-nav-link');
-    if (!link) return;
-
-    // Temporarily enable pointer events on the link
-    link.style.pointerEvents = 'auto';
-
-    // Create a synthetic right-click event on the link
-    const rect = link.getBoundingClientRect();
-    const linkEvent = new MouseEvent('contextmenu', {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        button: 2,
-        buttons: 2,
-        clientX: event.clientX,
-        clientY: event.clientY,
-        screenX: event.screenX,
-        screenY: event.screenY
-    });
-
-    // Prevent the original event from showing default context menu
-    event.preventDefault();
-    event.stopPropagation();
-
-    // Dispatch the event on the link element
-    link.dispatchEvent(linkEvent);
-
-    // Reset pointer events after a short delay (after menu is shown)
-    setTimeout(() => {
-        link.style.pointerEvents = 'none';
-    }, 100);
 }
 
 // Handle middle-click on chat history items to open in new tab
@@ -645,19 +629,20 @@ function handleChatHistoryMiddleClick(event) {
     const context = SillyTavern.getContext();
 
     // Prepare chat info for new tab
+    // Note: fileName includes .jsonl extension, which is needed for the URL
     let chatInfo;
     if (context.groupId) {
         chatInfo = {
             type: 'group',
             groupId: context.groupId,
-            chatId: fileName
+            chatId: fileName.endsWith('.jsonl') ? fileName : fileName + '.jsonl'
         };
     } else if (context.characterId !== undefined && context.characters[context.characterId]) {
         const char = context.characters[context.characterId];
         chatInfo = {
             type: 'character',
             avatar: char.avatar,
-            chatId: fileName
+            chatId: fileName.endsWith('.jsonl') ? fileName : fileName + '.jsonl'
         };
     } else {
         return;
@@ -714,11 +699,8 @@ function setupChatHistoryObserver() {
         subtree: true
     });
 
-    // Add event listeners for right-click and middle-click
-    selectChatDiv.addEventListener('contextmenu', handleChatHistoryContextMenu);
-    selectChatDiv.addEventListener('auxclick', handleChatHistoryMiddleClick);
+    // Prevent default middle-click scroll behavior
     selectChatDiv.addEventListener('mousedown', (event) => {
-        // Prevent default middle-click scroll behavior
         if (event.button === 1) {
             event.preventDefault();
         }
