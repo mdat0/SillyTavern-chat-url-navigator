@@ -4,7 +4,6 @@
 const {
     eventSource,
     event_types,
-    saveSettingsDebounced,
 } = SillyTavern.getContext();
 
 import { extension_settings } from "../../../extensions.js";
@@ -14,8 +13,6 @@ const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 
 const defaultSettings = {
     enabled: true,
-    autoUpdateUrl: true,
-    showCopyButton: true,
 };
 
 let isNavigatingFromUrl = false;
@@ -129,25 +126,6 @@ function getCurrentChatInfo() {
     return null;
 }
 
-// Generate URL hash for current chat
-function generateChatUrl() {
-    const chatInfo = getCurrentChatInfo();
-    if (!chatInfo) return null;
-
-    const baseUrl = window.location.origin + window.location.pathname;
-    // Remove .jsonl extension from chatId for cleaner URLs
-    const cleanChatId = chatInfo.chatId.replace(/\.jsonl$/i, '');
-
-    // Use query parameters instead of hash (hash gets lost on server redirect)
-    if (chatInfo.type === 'group') {
-        const params = `?nav=group&gid=${encodeURIComponent(chatInfo.groupId)}&cid=${encodeURIComponent(cleanChatId)}`;
-        return baseUrl + params;
-    } else {
-        const params = `?nav=char&avatar=${encodeURIComponent(chatInfo.avatar)}&cid=${encodeURIComponent(cleanChatId)}`;
-        return baseUrl + params;
-    }
-}
-
 // Generate a short URL using localStorage
 function generateShortUrl() {
     const chatInfo = getCurrentChatInfo();
@@ -169,7 +147,7 @@ function generateShortUrl() {
 // Update browser URL to reflect current chat
 function updateBrowserUrl() {
     console.log('[Chat URL Navigator] updateBrowserUrl called, isNavigatingFromUrl:', isNavigatingFromUrl, 'appReady:', appReady);
-    if (!extension_settings[extensionName].autoUpdateUrl) return;
+    if (!extension_settings[extensionName].enabled) return;
     if (!appReady) {
         console.log('[Chat URL Navigator] Skipping - app not ready yet');
         return;
@@ -382,102 +360,12 @@ async function navigateToChat(urlInfo) {
     }
 }
 
-// Copy current chat URL to clipboard
-async function copyCurrentChatUrl() {
-    const url = generateChatUrl();
-    if (!url) {
-        toastr.warning('No chat is currently open', 'Chat URL Navigator');
-        return;
-    }
-
-    try {
-        await navigator.clipboard.writeText(url);
-        toastr.success('Chat URL copied to clipboard', 'Chat URL Navigator');
-    } catch (err) {
-        // Fallback for older browsers
-        const textArea = document.createElement('textarea');
-        textArea.value = url;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-        toastr.success('Chat URL copied to clipboard', 'Chat URL Navigator');
-    }
-}
-
-// Open current chat in a new tab
-function openChatInNewTab() {
-    const chatInfo = getCurrentChatInfo();
-    if (!chatInfo) {
-        toastr.warning('No chat is currently open', 'Chat URL Navigator');
-        return;
-    }
-
-    // Store chat info in localStorage for the new tab to pick up
-    const pendingNavigation = {
-        timestamp: Date.now(),
-        chatInfo: chatInfo
-    };
-    localStorage.setItem('chat_url_navigator_pending', JSON.stringify(pendingNavigation));
-
-    // Open new tab - it will check localStorage on load
-    const baseUrl = window.location.origin + window.location.pathname;
-    window.open(baseUrl, '_blank');
-    toastr.info('Opening chat in new tab', 'Chat URL Navigator');
-}
-
 // Load extension settings
 async function loadSettings() {
     extension_settings[extensionName] = extension_settings[extensionName] || {};
     if (Object.keys(extension_settings[extensionName]).length === 0) {
         Object.assign(extension_settings[extensionName], defaultSettings);
     }
-
-    // Update UI elements
-    $("#chat_url_nav_enabled").prop("checked", extension_settings[extensionName].enabled).trigger("input");
-    $("#chat_url_nav_auto_update").prop("checked", extension_settings[extensionName].autoUpdateUrl).trigger("input");
-    $("#chat_url_nav_show_button").prop("checked", extension_settings[extensionName].showCopyButton).trigger("input");
-
-    updateCopyButtonVisibility();
-}
-
-// Update copy button visibility
-function updateCopyButtonVisibility() {
-    if (extension_settings[extensionName].showCopyButton) {
-        $("#chat_url_copy_btn").show();
-        $("#chat_url_newtab_btn").show();
-    } else {
-        $("#chat_url_copy_btn").hide();
-        $("#chat_url_newtab_btn").hide();
-    }
-}
-
-// Settings change handlers
-function onEnabledChange(event) {
-    const value = Boolean($(event.target).prop("checked"));
-    extension_settings[extensionName].enabled = value;
-    saveSettingsDebounced();
-
-    if (value) {
-        updateBrowserUrl();
-    }
-}
-
-function onAutoUpdateChange(event) {
-    const value = Boolean($(event.target).prop("checked"));
-    extension_settings[extensionName].autoUpdateUrl = value;
-    saveSettingsDebounced();
-
-    if (value) {
-        updateBrowserUrl();
-    }
-}
-
-function onShowButtonChange(event) {
-    const value = Boolean($(event.target).prop("checked"));
-    extension_settings[extensionName].showCopyButton = value;
-    saveSettingsDebounced();
-    updateCopyButtonVisibility();
 }
 
 // Create settings HTML
@@ -491,53 +379,13 @@ function createSettingsHtml() {
             </div>
             <div class="inline-drawer-content">
                 <div class="chat_url_nav_block">
-                    <label class="checkbox_label" for="chat_url_nav_enabled">
-                        <input type="checkbox" id="chat_url_nav_enabled" />
-                        <span>Enable Chat URL Navigator</span>
-                    </label>
-                    <label class="checkbox_label" for="chat_url_nav_auto_update">
-                        <input type="checkbox" id="chat_url_nav_auto_update" />
-                        <span>Auto-update URL on chat change</span>
-                    </label>
-                    <label class="checkbox_label" for="chat_url_nav_show_button">
-                        <input type="checkbox" id="chat_url_nav_show_button" />
-                        <span>Show copy/new tab buttons</span>
-                    </label>
-                    <div class="chat_url_nav_actions">
-                        <button id="chat_url_copy_btn" class="menu_button">
-                            <i class="fa-solid fa-copy"></i> Copy Chat URL
-                        </button>
-                        <button id="chat_url_newtab_btn" class="menu_button">
-                            <i class="fa-solid fa-up-right-from-square"></i> Open in New Tab
-                        </button>
-                    </div>
                     <div class="chat_url_nav_info">
-                        <small>Current URL will be updated when you switch chats. Share the URL to link directly to a specific conversation.</small>
+                        <small>Browser URL and title automatically update when switching chats. Right-click chat history items for link options.</small>
                     </div>
                 </div>
             </div>
         </div>
     </div>`;
-}
-
-// Add buttons to chat header
-function addChatHeaderButtons() {
-    // Check if buttons already exist
-    if ($("#chat_url_header_copy").length > 0) return;
-
-    const headerButtons = `
-        <div id="chat_url_header_copy" class="fa-solid fa-link" title="Copy Chat URL"></div>
-        <div id="chat_url_header_newtab" class="fa-solid fa-up-right-from-square" title="Open in New Tab"></div>
-    `;
-
-    // Add to chat header actions (adjust selector based on actual SillyTavern structure)
-    const chatHeader = $("#chat_header_back_button").parent();
-    if (chatHeader.length > 0) {
-        chatHeader.append(headerButtons);
-
-        $("#chat_url_header_copy").on("click", copyCurrentChatUrl);
-        $("#chat_url_header_newtab").on("click", openChatInNewTab);
-    }
 }
 
 // Generate URL for a specific chat item in the history panel
@@ -725,20 +573,8 @@ jQuery(async () => {
     const settingsHtml = createSettingsHtml();
     $("#extensions_settings").append(settingsHtml);
 
-    // Bind settings event handlers
-    $("#chat_url_nav_enabled").on("input", onEnabledChange);
-    $("#chat_url_nav_auto_update").on("input", onAutoUpdateChange);
-    $("#chat_url_nav_show_button").on("input", onShowButtonChange);
-
-    // Bind button event handlers
-    $("#chat_url_copy_btn").on("click", copyCurrentChatUrl);
-    $("#chat_url_newtab_btn").on("click", openChatInNewTab);
-
     // Load settings
     await loadSettings();
-
-    // Add buttons to chat header
-    addChatHeaderButtons();
 
     // Setup chat history observer
     setupChatHistoryObserver();
