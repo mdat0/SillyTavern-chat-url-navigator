@@ -559,6 +559,11 @@ jQuery(async () => {
         if (urlInfo) {
             console.log('[Chat URL Navigator] URL info from original query params:', urlInfo);
             await navigateToChat(urlInfo);
+            // Update title after navigation completes
+            setTimeout(() => {
+                const chatInfo = getCurrentChatInfo();
+                updateDocumentTitle(chatInfo);
+            }, 600);
             // Keep the URL as-is (don't clean up) so it can be shared
             return;
         }
@@ -568,6 +573,11 @@ jQuery(async () => {
         if (urlInfo) {
             console.log('[Chat URL Navigator] URL info from current query params:', urlInfo);
             await navigateToChat(urlInfo);
+            // Update title after navigation completes
+            setTimeout(() => {
+                const chatInfo = getCurrentChatInfo();
+                updateDocumentTitle(chatInfo);
+            }, 600);
             return;
         }
 
@@ -577,6 +587,11 @@ jQuery(async () => {
         if (urlInfo) {
             console.log('[Chat URL Navigator] Navigating to chat from URL:', urlInfo);
             await navigateToChat(urlInfo);
+            // Update title after navigation completes
+            setTimeout(() => {
+                const chatInfo = getCurrentChatInfo();
+                updateDocumentTitle(chatInfo);
+            }, 600);
         }
         // Don't call updateBrowserUrl() here - it would clear query params before they're processed
         // URL will be updated on CHAT_CHANGED event instead
