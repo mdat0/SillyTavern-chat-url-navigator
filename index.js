@@ -199,13 +199,22 @@ async function copyCurrentChatUrl() {
 
 // Open current chat in a new tab
 function openChatInNewTab() {
-    const url = generateChatUrl();
-    if (!url) {
+    const chatInfo = getCurrentChatInfo();
+    if (!chatInfo) {
         toastr.warning('No chat is currently open', 'Chat URL Navigator');
         return;
     }
 
-    window.open(url, '_blank');
+    // Store chat info in localStorage for the new tab to pick up
+    const pendingNavigation = {
+        timestamp: Date.now(),
+        chatInfo: chatInfo
+    };
+    localStorage.setItem('chat_url_navigator_pending', JSON.stringify(pendingNavigation));
+
+    // Open new tab - it will check localStorage on load
+    const baseUrl = window.location.origin + window.location.pathname;
+    window.open(baseUrl, '_blank');
     toastr.info('Opening chat in new tab', 'Chat URL Navigator');
 }
 
@@ -350,6 +359,34 @@ jQuery(async () => {
         console.log('[Chat URL Navigator] Current URL:', window.location.href);
         console.log('[Chat URL Navigator] Current hash:', window.location.hash);
         if (!extension_settings[extensionName].enabled) return;
+
+        // First check localStorage for pending navigation (from "Open in New Tab")
+        const pendingNavStr = localStorage.getItem('chat_url_navigator_pending');
+        if (pendingNavStr) {
+            try {
+                const pendingNav = JSON.parse(pendingNavStr);
+                // Only use if less than 10 seconds old
+                if (Date.now() - pendingNav.timestamp < 10000) {
+                    console.log('[Chat URL Navigator] Found pending navigation:', pendingNav.chatInfo);
+                    localStorage.removeItem('chat_url_navigator_pending');
+
+                    const urlInfo = {
+                        type: pendingNav.chatInfo.type,
+                        avatar: pendingNav.chatInfo.avatar,
+                        chatId: pendingNav.chatInfo.chatId,
+                        groupId: pendingNav.chatInfo.groupId
+                    };
+                    await navigateToChat(urlInfo);
+                    return;
+                } else {
+                    // Too old, remove it
+                    localStorage.removeItem('chat_url_navigator_pending');
+                }
+            } catch (err) {
+                console.error('[Chat URL Navigator] Error parsing pending navigation:', err);
+                localStorage.removeItem('chat_url_navigator_pending');
+            }
+        }
 
         const urlInfo = parseUrlHash();
         console.log('[Chat URL Navigator] URL info on APP_READY:', urlInfo);
