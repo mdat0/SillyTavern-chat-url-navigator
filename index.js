@@ -347,6 +347,8 @@ jQuery(async () => {
     // Handle URL navigation on app ready
     eventSource.on(event_types.APP_READY, async () => {
         console.log('[Chat URL Navigator] APP_READY event fired');
+        console.log('[Chat URL Navigator] Current URL:', window.location.href);
+        console.log('[Chat URL Navigator] Current hash:', window.location.hash);
         if (!extension_settings[extensionName].enabled) return;
 
         const urlInfo = parseUrlHash();
@@ -363,6 +365,8 @@ jQuery(async () => {
     // Also check URL immediately in case APP_READY already fired
     setTimeout(async () => {
         console.log('[Chat URL Navigator] Delayed URL check');
+        console.log('[Chat URL Navigator] Current URL (delayed):', window.location.href);
+        console.log('[Chat URL Navigator] Current hash (delayed):', window.location.hash);
         if (!extension_settings[extensionName].enabled) return;
 
         const urlInfo = parseUrlHash();
