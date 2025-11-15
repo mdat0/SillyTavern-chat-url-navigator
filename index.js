@@ -138,7 +138,8 @@ async function navigateToChat(urlInfo) {
 
             // Check if we need to switch character
             if (context.characterId !== charIndex) {
-                await context.setCharacterId(charIndex);
+                // Use selectCharacterById instead of setCharacterId
+                await context.selectCharacterById(String(charIndex));
             }
 
             // Open specific chat
@@ -147,6 +148,7 @@ async function navigateToChat(urlInfo) {
                     await context.openCharacterChat(urlInfo.chatId);
                     toastr.success(`Opened chat: ${urlInfo.chatId}`, 'Chat URL Navigator');
                 } catch (err) {
+                    console.error('[Chat URL Navigator] Error opening chat:', err);
                     toastr.error(`Failed to open chat: ${urlInfo.chatId}`, 'Chat URL Navigator');
                     return false;
                 }
@@ -157,6 +159,7 @@ async function navigateToChat(urlInfo) {
                 await context.openGroupChat(urlInfo.groupId, urlInfo.chatId);
                 toastr.success(`Opened group chat`, 'Chat URL Navigator');
             } catch (err) {
+                console.error('[Chat URL Navigator] Error opening group chat:', err);
                 toastr.error(`Failed to open group chat`, 'Chat URL Navigator');
                 return false;
             }
