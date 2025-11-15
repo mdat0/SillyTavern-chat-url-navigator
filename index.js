@@ -2,9 +2,10 @@
 // Assigns URLs to individual chats and allows opening them in new tabs
 
 import { extension_settings, getContext, loadExtensionSettings } from "../../../extensions.js";
-import { saveSettingsDebounced, eventSource, event_types, this_chid, characters, selected_group, groups } from "../../../../script.js";
+import { saveSettingsDebounced, eventSource, event_types, this_chid, characters, selected_group } from "../../../../script.js";
+import { groups } from "../../../group-chats.js";
 
-const extensionName = "st-extension-example";
+const extensionName = "SillyTavern-chat-url-navigator";
 const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 
 const defaultSettings = {
