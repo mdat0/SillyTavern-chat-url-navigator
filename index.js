@@ -95,10 +95,15 @@ function generateShortUrl() {
 
 // Update browser URL to reflect current chat
 function updateBrowserUrl() {
+    console.log('[Chat URL Navigator] updateBrowserUrl called, isNavigatingFromUrl:', isNavigatingFromUrl);
     if (!extension_settings[extensionName].autoUpdateUrl) return;
-    if (isNavigatingFromUrl) return;
+    if (isNavigatingFromUrl) {
+        console.log('[Chat URL Navigator] Skipping - isNavigatingFromUrl is true');
+        return;
+    }
 
     const chatInfo = getCurrentChatInfo();
+    console.log('[Chat URL Navigator] chatInfo:', chatInfo);
     if (!chatInfo) {
         // Don't clear URL if we just navigated (avoid race condition)
         if (Date.now() - lastNavigationTime < 2000) {
@@ -107,6 +112,7 @@ function updateBrowserUrl() {
         }
         // Clear URL if no chat is open
         if (window.location.search || window.location.hash) {
+            console.log('[Chat URL Navigator] Clearing URL to pathname');
             window.history.pushState(null, '', window.location.pathname);
         }
         return;
@@ -122,7 +128,9 @@ function updateBrowserUrl() {
 
     // Check if URL needs updating
     const currentUrl = window.location.pathname + window.location.search;
+    console.log('[Chat URL Navigator] currentUrl:', currentUrl, 'newUrl:', newUrl);
     if (currentUrl !== newUrl) {
+        console.log('[Chat URL Navigator] Updating URL to:', newUrl);
         window.history.pushState(null, '', newUrl);
     }
 }
