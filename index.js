@@ -20,6 +20,7 @@ const defaultSettings = {
 
 let isNavigatingFromUrl = false;
 let lastNavigationTime = 0;
+let appReady = false;
 
 // Store the original URL at load time (before it gets cleaned up)
 const originalUrl = window.location.href;
@@ -95,8 +96,12 @@ function generateShortUrl() {
 
 // Update browser URL to reflect current chat
 function updateBrowserUrl() {
-    console.log('[Chat URL Navigator] updateBrowserUrl called, isNavigatingFromUrl:', isNavigatingFromUrl);
+    console.log('[Chat URL Navigator] updateBrowserUrl called, isNavigatingFromUrl:', isNavigatingFromUrl, 'appReady:', appReady);
     if (!extension_settings[extensionName].autoUpdateUrl) return;
+    if (!appReady) {
+        console.log('[Chat URL Navigator] Skipping - app not ready yet');
+        return;
+    }
     if (isNavigatingFromUrl) {
         console.log('[Chat URL Navigator] Skipping - isNavigatingFromUrl is true');
         return;
@@ -458,6 +463,7 @@ jQuery(async () => {
         console.log('[Chat URL Navigator] APP_READY event fired');
         console.log('[Chat URL Navigator] Current URL:', window.location.href);
         console.log('[Chat URL Navigator] Current hash:', window.location.hash);
+        appReady = true;
         if (!extension_settings[extensionName].enabled) return;
 
         // First check localStorage for pending navigation (from "Open in New Tab")
