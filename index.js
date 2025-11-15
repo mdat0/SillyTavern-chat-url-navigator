@@ -544,15 +544,17 @@ function addChatHeaderButtons() {
 function generateChatHistoryItemUrl(fileName) {
     const context = SillyTavern.getContext();
     const baseUrl = window.location.origin + window.location.pathname;
+    // Remove .jsonl extension from fileName for cleaner URLs
+    const cleanFileName = fileName.replace(/\.jsonl$/i, '');
 
     if (context.groupId) {
         // Group chat
-        const params = `?nav=group&gid=${encodeURIComponent(context.groupId)}&cid=${encodeURIComponent(fileName)}`;
+        const params = `?nav=group&gid=${encodeURIComponent(context.groupId)}&cid=${encodeURIComponent(cleanFileName)}`;
         return baseUrl + params;
     } else if (context.characterId !== undefined && context.characters[context.characterId]) {
         // Character chat
         const char = context.characters[context.characterId];
-        const params = `?nav=char&avatar=${encodeURIComponent(char.avatar)}&cid=${encodeURIComponent(fileName)}`;
+        const params = `?nav=char&avatar=${encodeURIComponent(char.avatar)}&cid=${encodeURIComponent(cleanFileName)}`;
         return baseUrl + params;
     }
 
