@@ -20,6 +20,7 @@ const CONSTANTS = {
   TIMEOUT_OBSERVER_RETRY: 1000,
   TIMEOUT_DELAYED_URL_CHECK: 1000,
   HIGHLIGHT_DURATION: 2000,
+  DEBOUNCE_URL_UPDATE: 300, // Debounce for URL updates to avoid rapid consecutive changes
 };
 
 const defaultSettings = {
@@ -30,11 +31,11 @@ let isNavigatingFromUrl = false;
 let lastNavigationTime = 0;
 let appReady = false;
 let chatHistoryObserver = null;
+let urlUpdateDebounceTimer = null;
 
 // Store the original URL at load time (before it gets cleaned up)
 const originalUrl = window.location.href;
 const originalSearch = window.location.search;
-const originalHash = window.location.hash;
 console.log("[Chat URL Navigator] Original URL at load:", originalUrl);
 
 // Remove file extension from filename
@@ -253,32 +254,6 @@ function updateBrowserUrl() {
 
   // Always update document title (even if URL didn't change)
   updateDocumentTitle(chatInfo);
-}
-
-// Parse URL hash and extract chat information
-function parseUrlHash() {
-  const hash = window.location.hash;
-  if (!hash || hash.length < 2) return null;
-
-  // Remove leading '#/'
-  const path = hash.startsWith("#/") ? hash.slice(2) : hash.slice(1);
-  const parts = path.split("/");
-
-  if (parts[0] === "char" && parts.length >= 3) {
-    return {
-      type: "character",
-      avatar: decodeURIComponent(parts[1]),
-      chatId: decodeURIComponent(parts[2]),
-    };
-  } else if (parts[0] === "group" && parts.length >= 3) {
-    return {
-      type: "group",
-      groupId: decodeURIComponent(parts[1]),
-      chatId: decodeURIComponent(parts[2]),
-    };
-  }
-
-  return null;
 }
 
 // Parse URL query parameters for chat navigation
@@ -682,16 +657,6 @@ async function handleUrlNavigation() {
     return true;
   }
 
-  // Fall back to hash-based routing
-  urlInfo = parseUrlHash();
-  console.log("[Chat URL Navigator] URL info on APP_READY:", urlInfo);
-  if (urlInfo) {
-    console.log("[Chat URL Navigator] Navigating to chat from URL:", urlInfo);
-    await navigateToChat(urlInfo);
-    scheduleDocumentTitleUpdate();
-    return true;
-  }
-
   return false;
 }
 
@@ -699,7 +664,6 @@ async function handleUrlNavigation() {
 async function onAppReady() {
   console.log("[Chat URL Navigator] APP_READY event fired");
   console.log("[Chat URL Navigator] Current URL:", window.location.href);
-  console.log("[Chat URL Navigator] Current hash:", window.location.hash);
   appReady = true;
 
   if (!extension_settings[extensionName].enabled) return;
@@ -719,12 +683,7 @@ async function handlePopstate() {
   console.log("[Chat URL Navigator] Current URL after popstate:", window.location.href);
   if (!extension_settings[extensionName].enabled) return;
 
-  // Check query parameters first (new format)
-  let urlInfo = parseUrlQueryParams();
-  if (!urlInfo) {
-    // Fall back to hash-based routing (old format for compatibility)
-    urlInfo = parseUrlHash();
-  }
+  const urlInfo = parseUrlQueryParams();
   console.log("[Chat URL Navigator] URL info on popstate:", urlInfo);
   if (urlInfo) {
     const success = await navigateToChat(urlInfo);
@@ -748,23 +707,21 @@ async function handlePopstate() {
   }
 }
 
-// Handle hashchange event (manual URL edits)
-async function handleHashChange() {
-  console.log("[Chat URL Navigator] hashchange event fired");
-  if (!extension_settings[extensionName].enabled) return;
-  if (isNavigatingFromUrl) return;
-
-  const urlInfo = parseUrlHash();
-  if (urlInfo) {
-    await navigateToChat(urlInfo);
-  }
-}
-
-// Handle chat changed event
+// Handle chat changed event with debouncing
 function handleChatChanged() {
   if (!extension_settings[extensionName].enabled) return;
   console.log("[Chat URL Navigator] CHAT_CHANGED event fired");
-  updateBrowserUrl();
+
+  // Debounce URL updates to handle rapid consecutive chat changes
+  // (e.g., when SillyTavern restores previous chat before switching to selected one)
+  if (urlUpdateDebounceTimer) {
+    clearTimeout(urlUpdateDebounceTimer);
+  }
+
+  urlUpdateDebounceTimer = setTimeout(() => {
+    urlUpdateDebounceTimer = null;
+    updateBrowserUrl();
+  }, CONSTANTS.DEBOUNCE_URL_UPDATE);
 }
 
 // Setup all event listeners
@@ -772,30 +729,6 @@ function setupEventListeners() {
   eventSource.on(event_types.APP_READY, onAppReady);
   eventSource.on(event_types.CHAT_CHANGED, handleChatChanged);
   window.addEventListener("popstate", handlePopstate);
-  window.addEventListener("hashchange", handleHashChange);
-
-  // Also check URL immediately in case APP_READY already fired
-  setTimeout(async () => {
-    console.log("[Chat URL Navigator] Delayed URL check");
-    console.log(
-      "[Chat URL Navigator] Current URL (delayed):",
-      window.location.href
-    );
-    console.log(
-      "[Chat URL Navigator] Current hash (delayed):",
-      window.location.hash
-    );
-    if (!extension_settings[extensionName].enabled) return;
-
-    const urlInfo = parseUrlHash();
-    if (urlInfo) {
-      console.log(
-        "[Chat URL Navigator] Attempting delayed navigation:",
-        urlInfo
-      );
-      await navigateToChat(urlInfo);
-    }
-  }, CONSTANTS.TIMEOUT_DELAYED_URL_CHECK);
 }
 
 // Initialize the extension
