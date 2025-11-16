@@ -4,6 +4,7 @@
 const { eventSource, event_types } = SillyTavern.getContext();
 
 import { extension_settings } from "../../../extensions.js";
+import { closeCurrentChat } from "../../../../script.js";
 
 const extensionName = "SillyTavern-chat-url-navigator";
 
@@ -715,6 +716,7 @@ async function onAppReady() {
 // Handle popstate event (browser back/forward)
 async function handlePopstate() {
   console.log("[Chat URL Navigator] popstate event fired");
+  console.log("[Chat URL Navigator] Current URL after popstate:", window.location.href);
   if (!extension_settings[extensionName].enabled) return;
 
   // Check query parameters first (new format)
@@ -725,11 +727,24 @@ async function handlePopstate() {
   }
   console.log("[Chat URL Navigator] URL info on popstate:", urlInfo);
   if (urlInfo) {
-    await navigateToChat(urlInfo);
+    const success = await navigateToChat(urlInfo);
+    console.log("[Chat URL Navigator] Navigation result:", success);
     scheduleDocumentTitleUpdate();
   } else {
-    // No chat info in URL, reset title
+    // No chat info in URL, go back to home/hub page
+    console.log("[Chat URL Navigator] No chat info in URL, returning to home page");
     document.title = CONSTANTS.DEFAULT_TITLE;
+
+    // Close current chat and return to welcome screen
+    const context = SillyTavern.getContext();
+    if (context.groupId || context.characterId !== undefined) {
+      try {
+        await closeCurrentChat();
+        console.log("[Chat URL Navigator] Closed chat and returned to home");
+      } catch (err) {
+        console.log("[Chat URL Navigator] closeCurrentChat failed:", err);
+      }
+    }
   }
 }
 
